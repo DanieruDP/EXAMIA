@@ -1,0 +1,151 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  TEACHER
+  STUDENT
+}
+
+enum PublishedExamStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+}
+
+model User {
+  id            String          @id @default(cuid())
+  name          String
+  email         String          @unique
+  passwordHash  String
+  role          UserRole
+  createdAt     DateTime        @default(now())
+  sessions      Session[]
+  authoredExams PublishedExam[]
+  attempts      Exam[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model PublishedExam {
+  id                    String              @id @default(cuid())
+  teacherId             String
+  teacher               User                @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title                 String
+  subject               String
+  instructions          String
+  questionCount         Int
+  durationMinutes       Int
+  showResultsToStudents Boolean             @default(true)
+  status                PublishedExamStatus @default(DRAFT)
+  accessCode            String              @unique
+  createdAt             DateTime            @default(now())
+  publishedAt           DateTime?
+  closedAt              DateTime?
+  materials             MaterialAsset[]
+  questions             Question[]
+  attempts              Exam[]
+
+  @@index([teacherId, createdAt])
+  @@index([status, accessCode])
+}
+
+model MaterialAsset {
+  id              String        @id @default(cuid())
+  publishedExamId String
+  publishedExam   PublishedExam @relation(fields: [publishedExamId], references: [id], onDelete: Cascade)
+  name            String
+  mimeType        String
+  size            Int
+  storageKey      String        @unique
+  createdAt       DateTime      @default(now())
+
+  @@index([publishedExamId])
+}
+
+model Source {
+  id        String     @id @default(cuid())
+  url       String     @unique
+  title     String?
+  active    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  questions Question[]
+}
+
+model Question {
+  id              String         @id @default(cuid())
+  prompt          String
+  options         Json
+  answerIndex     Int
+  explanation     String
+  difficulty      Int
+  topic           String
+  material        String
+  sourceUrl       String?
+  active          Boolean        @default(true)
+  sourceId        String?
+  source          Source?        @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  examId          String?
+  exam            Exam?          @relation(fields: [examId], references: [id], onDelete: Cascade)
+  publishedExamId String?
+  publishedExam   PublishedExam? @relation(fields: [publishedExamId], references: [id], onDelete: Cascade)
+  createdAt       DateTime       @default(now())
+  answers         ExamAnswer[]
+
+  @@index([active, difficulty, topic])
+  @@index([examId, difficulty])
+  @@index([publishedExamId, difficulty])
+}
+
+model Exam {
+  id              String         @id @default(cuid())
+  studentName     String
+  topic           String
+  questionCount   Int
+  durationMinutes Int
+  score           Int            @default(0)
+  correctCount    Int            @default(0)
+  currentLevel    Int            @default(3)
+  status          String         @default("active")
+  startedAt       DateTime       @default(now())
+  finishedAt      DateTime?
+  answers         ExamAnswer[]
+  questions       Question[]
+  materialFiles   Json           @default("[]")
+  publishedExamId String?
+  publishedExam   PublishedExam? @relation(fields: [publishedExamId], references: [id], onDelete: Cascade)
+  studentId       String?
+  student         User?          @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([publishedExamId, startedAt])
+  @@index([studentId, startedAt])
+}
+
+model ExamAnswer {
+  id         String   @id @default(cuid())
+  examId     String
+  questionId String
+  selected   Int
+  correct    Boolean
+  points     Int
+  askedLevel Int
+  answeredAt DateTime @default(now())
+  exam       Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  question   Question @relation(fields: [questionId], references: [id])
+
+  @@unique([examId, questionId])
+}
